@@ -7,13 +7,16 @@
     "lib": "lib"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha unit-tests/ --recursive",
+    "coverage": "npx nyc npm run test"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "chai": "^4.3.7",
     "lazy-z": "^1.8.3",
-    "mocha": "^10.2.0"
+    "mocha": "^10.2.0",
+    "nyc": "^15.1.0",
+    "regex-but-with-words": "^1.5.1"
   }
 }
