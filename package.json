@@ -11,7 +11,7 @@
     "coverage": "npx nyc npm run test",
     "build": "cd playground && npm i --force && npm run build",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d playground/build"
+    "deploy": "gh-pages -d playground"
   },
   "author": "Jennifer Valle",
   "license": "Apache 2.0",
@@ -22,7 +22,8 @@
   "devDependencies": {
     "chai": "^4.3.7",
     "mocha": "^10.2.0",
-    "nyc": "^15.1.0"
+    "nyc": "^15.1.0",
+    "gh-pages": "^5.0.0"
   },
   "homepage": "http://ibm.github.io/json-to-tf"
 }
