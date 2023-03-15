@@ -326,7 +326,7 @@ class App extends React.Component {
                 <h5>Input</h5>
                 <br />
                 <Code
-                  code={`const jsonToTf = require("package-name")
+                  code={`const jsonToTf = require("json-to-tf")
 
 jsonToTf(
   "ibm_container_vpc_cluster",
@@ -435,11 +435,11 @@ jsonToTf(
                   readOnly
                   code={
                     `\nname: "^slz-workload-cluster"\n` +
-                    `\n// shows in the terraform as\n` +
-                    `name = "slz-workload-cluster"\n\n` +
+                    `\n// converts to terraform:\n` +
+                    `//name = "slz-workload-cluster"\n\n` +
                     `vpc_id: "ibm_is_vpc.workload_vpc.id"\n` +
-                    `\n// shows in the terraform as\n` +
-                    `vpc_id = ibm_is_vpc.workload_vpc.id\n`
+                    `\n// converts to terraform:\n` +
+                    `//vpc_id = ibm_is_vpc.workload_vpc.id\n`
                   }
                 />
                 <br />
@@ -453,10 +453,10 @@ jsonToTf(
                   readOnly
                   code={
                     `\nworker_count: 2\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `worker_count = 2\n\n` +
                     `disable_public_service_endpoint: false\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `disable_public_service_endpoint = false\n`
                   }
                 />
@@ -471,7 +471,7 @@ jsonToTf(
                   readOnly
                   code={
                     `\ndepends_on: ["reference_1", "reference_2"]\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `depends_on = [\n  reference_1,\n  reference_2\n]`
                   }
                 />
@@ -481,14 +481,15 @@ jsonToTf(
                 While other string values need to be escaped, the ones for the{" "}
                 <strong>timeouts</strong> field do not. By using the reserved
                 keyword <strong>timeouts</strong>, strings will automatically be
-                converted without the use of the <code>^</code> operator.
+                surrounded by quotes without the use of the <code>^</code>{" "}
+                operator.
                 <br />
                 <br />
                 <Code
                   readOnly
                   code={
                     `\ntimeouts: {\n  create: "3h",\n  delete: "2h",\n  update: "3h"\n}\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `timeouts {\n  create = "3h"\n  delete = "2h"\n  update = "3h"\n}`
                   }
                 />
@@ -505,7 +506,7 @@ jsonToTf(
                   code={
                     `\n^kms_config: {\n  crk_id: "ibm_kms_key.slz_kms_slz_vsi_volume_key_key.key_id",\n` +
                     `  instance_id: "ibm_resource_instance.slz_kms.guid",\n  private_endpoint: false\n}\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `kms_config = {\n  crk_id           = ibm_kms_key.slz_kms_slz_vsi_volume_key_key.key_id\n  instance_id      = ibm_resource_instance.slz_kms.guid\n  private_endpoint = false\n}`
                   }
                 />
@@ -522,7 +523,7 @@ jsonToTf(
                   code={
                     `\n _kms_config: {\n  crk_id: "ibm_kms_key.slz_kms_slz_vsi_volume_key_key.key_id",\n` +
                     `  instance_id: "ibm_resource_instance.slz_kms.guid",\n  private_endpoint: false\n}\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `kms_config {\n  crk_id           = ibm_kms_key.slz_kms_slz_vsi_volume_key_key.key_id\n  instance_id      = ibm_resource_instance.slz_kms.guid\n  private_endpoint = false\n}`
                   }
                 />
@@ -538,13 +539,13 @@ jsonToTf(
                   readOnly
                   code={
                     `"-zones": [\n  {\n    name: "^us-south-1",\n    subnet_id: "ibm_is_subnet.workload_vsi_zone_1.id"\n  },\n  {\n    name: "^us-south-2",\n    subnet_id: "ibm_is_subnet.workload_vsi_zone_2.id"\n  },\n  {\n    name: "^us-south-3",\n    subnet_id: "ibm_is_subnet.workload_vsi_zone_3.id"\n  }\n]\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `zones {\n  name      = "us-south-1"\n  subnet_id = ibm_is_subnet.workload_vsi_zone_1.id\n}\n` +
                     `\nzones {\n  name      = "us-south-2"\n  subnet_id = ibm_is_subnet.workload_vsi_zone_2.id\n}\n` +
                     `\nzones {\n  name      = "us-south-3"\n  subnet_id = ibm_is_subnet.workload_vsi_zone_3.id\n}`
                   }
                 />
-                <br/>
+                <br />
                 <h5>Arrays Over Multiple Lines</h5>
                 <br />
                 To create an array where each entry has multiple lines, the{" "}
@@ -556,7 +557,7 @@ jsonToTf(
                   readOnly
                   code={
                     `\n"*items": ["reference_1", "reference_2"]\n` +
-                    `\n// shows in the terraform as\n` +
+                    `\n// converts to terraform:\n` +
                     `items = [\n  reference_1,\n  reference_2\n]`
                   }
                 />
