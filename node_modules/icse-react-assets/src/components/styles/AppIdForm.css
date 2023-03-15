@@ -1,0 +1,48 @@
+.fieldWidth {
+  width: 14rem;
+}
+
+.fieldWidthSmallest {
+  width: 8rem;
+}
+
+.marginBottomSmall {
+  margin-bottom: 1rem;
+}
+
+.forceTertiaryButtonStyles {
+  padding-right: 0.4375rem !important;
+  padding-left: 0.4375rem !important;
+}
+
+.positionRelative {
+  position: relative;
+}
+
+.displayFlex {
+  display: flex;
+}
+
+.formInSubForm {
+  margin-top: 0rem;
+  background: #f4f4f4;
+  padding: 1rem;
+}
+
+.marginBottomSmall {
+  margin-bottom: 1rem;
+}
+
+.alignButtons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alignItemsCenter {
+  align-items: center;
+}
+
+.spaceBetween {
+  justify-content: space-between;
+}
