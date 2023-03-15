@@ -13,10 +13,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "chai": "^4.3.7",
     "lazy-z": "^1.8.3",
-    "mocha": "^10.2.0",
-    "nyc": "^15.1.0",
     "regex-but-with-words": "^1.5.1"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0",
+    "nyc": "^15.1.0"
   }
 }

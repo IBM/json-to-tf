@@ -299,7 +299,7 @@ class App extends React.Component {
   render() {
     return (
       <div className="center">
-        <h1>jsonToTf</h1>
+        <h1 style={{ marginTop: "1vh" }}>json-to-tf Playground</h1>
         {/* <div
           style={{
             borderBottom: "1px solid black",
@@ -309,10 +309,82 @@ class App extends React.Component {
         /> */}
         <Tabs>
           <TabList aria-label="formTabs">
-            <Tab>Docs</Tab>
             <Tab>Playground</Tab>
+            <Tab>Docs</Tab>
           </TabList>
           <TabPanels>
+            <TabPanel>
+              <div className="alignButtons">
+                <div
+                  id="form"
+                  className="leftText"
+                  style={{ marginRight: "1vw" }}
+                >
+                  <IcseFormGroup className="pad" noMarginBottom>
+                    <TextInput
+                      id="type"
+                      name="type"
+                      labelText="Terraform Resource Type"
+                      value={this.state.type}
+                      className="fill"
+                      onChange={this.handleInputChange}
+                    />
+                  </IcseFormGroup>
+                  <IcseFormGroup className="pad" noMarginBottom>
+                    <TextInput
+                      id="name"
+                      name="name"
+                      labelText="Terraform Resource Name"
+                      value={this.state.name}
+                      className="fill"
+                      onChange={this.handleInputChange}
+                    />
+                  </IcseFormGroup>
+                  <IcseFormGroup className="pad">
+                    <Toggle
+                      id="use_data"
+                      name="use_data"
+                      labelText="Data Resource"
+                      value={this.state.use_data}
+                      onToggle={() =>
+                        this.setState({ use_data: !this.state.use_data })
+                      }
+                    />
+                  </IcseFormGroup>
+                  <div>
+                    <Code code={this.state.code} onChange={this.onChange} />
+                  </div>
+                </div>
+                <div id="render" className="leftText">
+                  <Tabs>
+                    <TabList aria-label="formTabs">
+                      <Tab>Terraform</Tab>
+                      <Tab>JavaScript</Tab>
+                    </TabList>
+                    <TabPanels className="leftText">
+                      <TabPanel className="doc">
+                        {<Code code={this.renderedCode()} readOnly />}
+                      </TabPanel>
+                      <TabPanel className="doc">
+                        {
+                          <Code
+                            code={
+                              `const jsonToTf = require("package-name")\n\n` +
+                              `jsonToTf(\n` +
+                              `  "${this.state.type}",\n` +
+                              `  "${this.state.name}",\n` +
+                              this.renderedJson() +
+                              `  ${this.state.use_data}\n);`
+                            }
+                            readOnly
+                          />
+                        }
+                      </TabPanel>
+                    </TabPanels>
+                  </Tabs>
+                </div>
+              </div>
+            </TabPanel>
             <TabPanel style={{ textAlign: "left" }}>
               <h3>jsonToTf</h3>
               <br />
@@ -562,78 +634,6 @@ jsonToTf(
                   }
                 />
                 <br />
-              </div>
-            </TabPanel>
-            <TabPanel>
-              <div className="alignButtons">
-                <div
-                  id="form"
-                  className="leftText"
-                  style={{ marginRight: "1vw" }}
-                >
-                  <IcseFormGroup className="pad" noMarginBottom>
-                    <TextInput
-                      id="type"
-                      name="type"
-                      labelText="Terraform Resource Type"
-                      value={this.state.type}
-                      className="fill"
-                      onChange={this.handleInputChange}
-                    />
-                  </IcseFormGroup>
-                  <IcseFormGroup className="pad" noMarginBottom>
-                    <TextInput
-                      id="name"
-                      name="name"
-                      labelText="Terraform Resource Name"
-                      value={this.state.name}
-                      className="fill"
-                      onChange={this.handleInputChange}
-                    />
-                  </IcseFormGroup>
-                  <IcseFormGroup className="pad">
-                    <Toggle
-                      id="use_data"
-                      name="use_data"
-                      labelText="Data Resource"
-                      value={this.state.use_data}
-                      onToggle={() =>
-                        this.setState({ use_data: !this.state.use_data })
-                      }
-                    />
-                  </IcseFormGroup>
-                  <div>
-                    <Code code={this.state.code} onChange={this.onChange} />
-                  </div>
-                </div>
-                <div id="render" className="leftText">
-                  <Tabs>
-                    <TabList aria-label="formTabs">
-                      <Tab>Terraform</Tab>
-                      <Tab>JavaScript</Tab>
-                    </TabList>
-                    <TabPanels className="leftText">
-                      <TabPanel className="doc">
-                        {
-                          <Code
-                            code={
-                              `const jsonToTf = require("package-name")\n\n` +
-                              `jsonToTf(\n` +
-                              `  "${this.state.type}",\n` +
-                              `  "${this.state.name}",\n` +
-                              this.renderedJson() +
-                              `  ${this.state.use_data}\n);`
-                            }
-                            readOnly
-                          />
-                        }
-                      </TabPanel>
-                      <TabPanel className="doc">
-                        {<Code code={this.renderedCode()} readOnly />}
-                      </TabPanel>
-                    </TabPanels>
-                  </Tabs>
-                </div>
               </div>
             </TabPanel>
           </TabPanels>
