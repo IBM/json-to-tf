@@ -1,8 +1,0 @@
-.cds--tab-content.doc {
-    padding: 0.5rem 0;
-  }
-
-.cds--tab-content:focus {
-  outline: none !important;
-  border: none !important;
-}
