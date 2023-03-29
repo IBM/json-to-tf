@@ -15,8 +15,17 @@ import {
   TabPanels,
   TabPanel,
 } from "@carbon/react";
-
-const { snakeCase, eachKey, isString, contains } = require("lazy-z");
+const flute = require("little-flute");
+const {
+  eachKey,
+  isString,
+  contains,
+  getType,
+  isArrayOfObjects,
+  hclEncode,
+  keys,
+  isArray,
+} = require("lazy-z");
 
 const carbonDesignCodemirrorTheme = createTheme({
   theme: "light",
@@ -51,39 +60,24 @@ const carbonDesignCodemirrorTheme = createTheme({
 let lastCommaExp = /,(?=$)/g;
 
 /**
- * transpose an object where each string value has quotes around it
- * @param {Object} source
- * @returns {Object}
+ * sort terraform keys
+ * @param {*} data terraform data object
+ * @returns {Array<string>}
  */
-function stringifyTranspose(source) {
-  let newObj = {};
-  eachKey(source, (key) => {
-    if (isString(source[key])) newObj[key] = `"${source[key]}"`;
-    else if (typeof source[key] !== "object") newObj[key] = source[key];
+function sortKeys(data) {
+  let keyList = keys(data);
+  if (contains(keyList, "//")) {
+    keyList.shift();
+  }
+  keyList = keyList.sort((a, b) => {
+    let aIsObjOrArr = getType(data[a]) === "object" || isArray(data[a]);
+    let bIsObjOrArr = getType(data[b]) === "object" || isArray(data[b]);
+    if (aIsObjOrArr && bIsObjOrArr) return 0;
+    if (aIsObjOrArr) return 1;
+    if (bIsObjOrArr || a === "source") return -1;
+    else return 0;
   });
-  return newObj;
-}
-
-/**
- * get the longest key from an object
- * @param {Object} obj
- * @returns {number} length of longest key
- */
-function longestKeyLength(obj) {
-  let longestKey = 0;
-  eachKey(obj, (key) => {
-    if (
-      key.length > longestKey && // if key is longer
-      key.indexOf("_") !== 0 && // is not decorated with _
-      !contains(["depends_on", "timeouts"], key) // and isn't reserved
-    ) {
-      longestKey =
-        key.indexOf("*") === 0 || key.indexOf("-") === 0
-          ? key.length - 1
-          : key.length;
-    }
-  });
-  return longestKey;
+  return keyList;
 }
 
 /**
@@ -100,93 +94,194 @@ function matchLength(str, length) {
 }
 
 /**
- * stringify value
- * @param {*} value
- * @returns {*} value escaped by quotes if string that starts with ^
+ * get longest key of a function with a value that is string, bool, number, or null
+ * @param {*} obj object
+ * @returns {number} length of longest key
  */
-function stringifyValue(value) {
-  if (isString(value)) {
-    if (value.indexOf("^") === 0) return `"${value.replace(/^\^/g, "")}"`;
-  }
-  return value;
+function getLongestInlineKey(obj) {
+  let longest = 0;
+  eachKey(obj, (key) => {
+    if (
+      !isArray(obj[key]) &&
+      (getType(obj[key]) !== "object" || obj[key] === null) &&
+      key.length > longest
+    ) {
+      longest = key.length;
+    }
+  });
+  return longest;
 }
 
 /**
- * json to tf
- * @param {string} type resource type
- * @param {string} name resource name
- * @param {Object} values arbitrary key value pairs
- * @param {Object} config config
- * @param {boolean} useData use data
- * @returns {string} terraform formatted code
+ * format a value that is not an object or array. will format strings to match
+ * terraform interpolation syntax
+ * @param {*} value
+ * @returns {*} formatted value
  */
+function formatDirectValue(value) {
+  if (isString(value)) {
+    if (value.match(/^\$\{[^}]+\}$/g) === null) {
+      return `"${value}"`;
+    } else {
+      return value.replace(/(\$|\{|})/g, "");
+    }
+  } else return value;
+}
 
-function jsonToTf(type, name, values, useData) {
-  let tf = `${useData ? "data" : "resource"} "${type}" "${snakeCase(name)}" {`;
-  let longest = longestKeyLength(values);
+/**
+ * create terraform data for inside terraform block based on object
+ * @param {*} data terraform values object
+ * @param {number} offset number of spaces to indent on recursion
+ * @param {boolean} isModule run special case if module
+ * @returns {string} stringified terraform data
+ */
+function tfData(data, offset, isModule) {
+  let str = ""; // return string
+  let frontSpace = "\n" + matchLength("", (offset || 0) + 2); // leading space for each line
+  let nextOffset = frontSpace.length - 1; // next offset for recursion
+  let longestInlineKey = getLongestInlineKey(data); // match length target
+  let sortedKeys = sortKeys(data); // get sorted keys
+
   /**
-   * run function for each key and
-   * @param {Object} obj
+   * format blocks with name (provisioner, backend)
+   * @param {string} kind name of block
+   * @param {*} data data object
    */
-  function eachTfKey(obj, offset) {
-    if (offset) longest = longestKeyLength(obj); // longest key
-    let offsetSpace = matchLength("", offset || 0); // offset for recursion
-    // for each field in the terraform object
-    eachKey(obj, (key) => {
-      let keyName = key.replace(/^(-|_|\*|\^)/g, ""); // key with indicator chars removed
-      let nextOffset = offset || 0;
-      let valueIsObject =
-        key.indexOf("_") === 0 || key.indexOf("^") === 0 || key === "timeouts";
-      let objectIndent = `\n\n  ${offsetSpace}${keyName}`; // indent for objects
-      let arrClose = `\n  ${offsetSpace}]`; // close for arrays
-      // keys that start with * are used for multiline arrays
-      if (key.indexOf("*") === 0) {
-        tf += `\n${offsetSpace.length === 0 ? "\n" : ""}  ${
-          offsetSpace + keyName
-        } = [`;
-        obj[key].forEach((item) => {
-          tf += `\n    ${offsetSpace + stringifyValue(item)},`;
-        });
-        tf = tf.replace(lastCommaExp, "");
-        tf += arrClose;
-      } else if (key.indexOf("-") === 0) {
-        // keys that start with - are used to indicate multiple blocks of the same kind
-        // ex. `network_interfaces` for vsi
-        obj[key].forEach((item) => {
-          tf += `\n\n  ${keyName} {`;
-          eachTfKey(item, 2 + nextOffset);
-          tf += `\n  }`;
-        });
-      } else if (key === "depends_on") {
-        // handle depends on arg
-        tf += `${objectIndent} = [`;
-        obj[key].forEach((dependency) => {
-          tf += `\n ${matchLength(offsetSpace, 2)} ${dependency},`;
-        });
-        tf = tf.replace(lastCommaExp, "");
-        tf += arrClose;
-      } else if (valueIsObject) {
-        // for keys that aren't new create a sub block
-        tf += `${objectIndent} ${
-          key.indexOf("^") === 0 ? "= " : "" // keys with ^ use an = for block assignment
-        }{`;
-        if (key === "timeouts") {
-          obj[key] = stringifyTranspose(obj[key]);
-        }
-        eachTfKey(obj[key], 2 + nextOffset);
-        tf += `\n  ${offsetSpace}}`;
-      } else {
-        // all other keys formatted here
-        let keyValue = obj[key];
-        tf += `\n  ${
-          offsetSpace + matchLength(key, longest)
-        } = ${stringifyValue(keyValue)}`;
-      }
+  function blockWithName(kind, data) {
+    let indexKey = keys(data)[0];
+    str += `${frontSpace}${kind} "${indexKey}" {`;
+    str += tfData(data[indexKey], nextOffset);
+    str += frontSpace + "}";
+  }
+
+  // for each sorted key
+  sortedKeys.forEach((key) => {
+    let dataType = getType(data[key]);
+    if (key === "provisioner") {
+      // handle provisoner block
+      data[key].forEach((provisioner) => {
+        blockWithName("provisioner", provisioner);
+      });
+    } else if (key === "backend" && !isString(data[key])) {
+      // handle backend block within terraform object
+      blockWithName("backend", data[key]);
+    } else if (
+      contains(["string", "number", "boolean"], dataType) ||
+      data[key] === null
+    ) {
+      // handle directly tranlated values
+      str += `${frontSpace}${matchLength(
+        key,
+        longestInlineKey
+      )} = ${formatDirectValue(data[key])}`;
+    } else if (dataType === "object") {
+      str += `${frontSpace}${key}${key === "required_providers" ? "" : " ="} {`;
+      str += tfData(data[key], nextOffset) + frontSpace + "}"; // remove newline from length
+    } else if (isArrayOfObjects(data[key]) && isModule) {
+      // for module, encode arrays of objects using hcl
+      let arrHcl = hclEncode({ [key]: data[key] }, false, nextOffset).split(
+        "\n"
+      );
+      let formatedArrHcl = "\n";
+      arrHcl.forEach((line) => {
+        formatedArrHcl += line + "\n";
+      });
+      str += formatedArrHcl.replace(/\n$/, "");
+    } else if (isArrayOfObjects(data[key])) {
+      // handle touples
+      data[key].forEach((item) => {
+        str += frontSpace + key + " {";
+        str += tfData(item, offset + 2);
+        str += frontSpace + "}";
+      });
+    } else {
+      // handle arrays
+      str += `${frontSpace}${key} = [`;
+      data[key].forEach((item) => {
+        str +=
+          frontSpace +
+          matchLength("", offset === 0 ? 2 : offset) +
+          formatDirectValue(item) +
+          ",";
+      });
+      str = str.replace(lastCommaExp, "");
+      str += `${frontSpace}]`;
+    }
+  });
+  return str;
+}
+
+/**
+ * format a terraform block
+ * @param {string} style name of block (terraform, resource)
+ * @param {string} name name of the resource
+ * @param {*} data
+ * @returns
+ */
+function formatTfBlock(style, name, data) {
+  let tf = "";
+  if (contains(["terraform", "provider", "module"], style)) {
+    tf += `${style}${style === "terraform" ? "" : ` "${name}"`} {`;
+    tf += tfData(data, 0, true);
+    tf += `\n}`;
+  } else {
+    tf += `${style} ${name} {`;
+    tf += tfData(data, 0);
+    tf += `\n}`;
+  }
+  return tf;
+}
+
+/**
+ * convert json to tf
+ * @param {string} jsonStr  string
+ * @returns {string} terraform string
+ */
+function jsonToTf(jsonStr) {
+  let data = new flute(jsonStr).parse();
+  let tf = "";
+  function getResourceTf(resources, isData) {
+    eachKey(resources, (instance) => {
+      let type = instance;
+      let data = resources[instance];
+      eachKey(data, (name) => {
+        let values = data[name];
+        tf +=
+          formatTfBlock(
+            isData ? "data" : "resource",
+            `"${type}" "${name}"`,
+            values
+          ) + "\n\n";
+      });
     });
   }
-  eachTfKey(values);
-  tf += "\n}\n";
-  return tf;
+  ["resource", "data"].forEach((key) => {
+    if (data[key]) getResourceTf(data[key], key === "data");
+  });
+
+  if (data.module) {
+    eachKey(data.module, (tfModule) => {
+      tf += formatTfBlock(
+        "module",
+        data.module[tfModule]["//"].metadata.uniqueId,
+        data.module[tfModule]
+      );
+    });
+  }
+
+  if (data.provider) {
+    eachKey(data.provider, (provider) => {
+      data.provider[provider].forEach((instance) => {
+        tf += formatTfBlock("provider", provider, instance);
+      });
+    });
+  }
+
+  if (data.terraform) {
+    tf += formatTfBlock("terraform", false, data.terraform);
+  }
+
+  return tf.replace(/\n\n*$/g, "");
 }
 
 export const Code = (props) => {
@@ -213,39 +308,207 @@ class App extends React.Component {
       use_data: false,
       code: JSON.stringify(
         {
-          name: "^slz-workload-cluster",
-          vpc_id: "ibm_is_vpc.workload_vpc.id",
-          resource_group_id: "ibm_resource_group.slz_workload_rg.id",
-          flavor: "^bx2.16x64",
-          worker_count: 2,
-          kube_version: "^default",
-          update_all_workers: null,
-          tags: '["hello", "world"]',
-          wait_till: "^IngressReady",
-          disable_public_service_endpoint: false,
-          entitlement: "^cloud_pak",
-          cos_instance_crn: "ibm_resource_instance.cos_object_storage.crn",
-          "-zones": [
-            {
-              name: "^us-south-1",
-              subnet_id: "ibm_is_subnet.workload_vsi_zone_1.id",
+          "//": {
+            metadata: {
+              backend: "local",
+              stackName: "cdktf-ecs-consul",
+              version: "0.12.2",
             },
-            {
-              name: "^us-south-2",
-              subnet_id: "ibm_is_subnet.workload_vsi_zone_2.id",
-            },
-            {
-              name: "^us-south-3",
-              subnet_id: "ibm_is_subnet.workload_vsi_zone_3.id",
-            },
-          ],
-          _kms_config: {
-            crk_id: "ibm_kms_key.slz_kms_slz_vsi_volume_key_key.key_id",
-            instance_id: "ibm_resource_instance.slz_kms.guid",
-            private_endpoint: false,
+            outputs: {},
           },
-          timeouts: { create: "3h", delete: "2h", update: "3h" },
-          depends_on: ["frog"],
+          data: {
+            terraform_remote_state: {
+              tfc_outputs: {
+                backend: "remote",
+                config: {
+                  organization: "jcolemorrison",
+                  workspaces: {
+                    name: "terraform-ecs-consul",
+                  },
+                },
+              },
+            },
+          },
+          module: {
+            images_module: {
+              "//": {
+                metadata: {
+                  path: "cdktf-ecs-consul/images_module",
+                  uniqueId: "images_module",
+                },
+              },
+              acl_secret_name_prefix:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}",
+              acls: true,
+              consul_client_token_secret_arn:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.consul_client_token_secret_arn}",
+              consul_datacenter:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.consul_dc_name}",
+              consul_server_ca_cert_arn:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.consul_root_ca_cert_arn}",
+              container_definitions: [
+                {
+                  cpu: 0,
+                  environment: [
+                    {
+                      name: "NAME",
+                      value: "Images",
+                    },
+                    {
+                      name: "MESSAGE",
+                      value: "Hello from the CDKTF Image Service",
+                    },
+                    {
+                      name: "UPSTREAM_URIS",
+                      value:
+                        // eslint-disable-next-line
+                        "http://${data.terraform_remote_state.tfc_outputs.outputs.database_private_ip}:27017",
+                    },
+                  ],
+                  essential: true,
+                  image: "nicholasjackson/fake-service:v0.23.1",
+                  logConfiguration: {
+                    logDriver: "awslogs",
+                    options: {
+                      "awslogs-group":
+                        // eslint-disable-next-line
+                        "${aws_cloudwatch_log_group.service_logs_30DB8EF6.name}",
+                      "awslogs-region":
+                        // eslint-disable-next-line
+                        "${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
+                      "awslogs-stream-prefix":
+                        // eslint-disable-next-line
+                        "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-",
+                    },
+                  },
+                  name: "images",
+                  portMappings: [
+                    {
+                      containerPort: 9090,
+                      hostPort: 9090,
+                      protocol: "tcp",
+                    },
+                  ],
+                },
+              ],
+              cpu: 256,
+              family:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
+              gossip_key_secret_arn:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.consul_gossip_key_arn}",
+              log_configuration: {
+                logDriver: "awslogs",
+                options: {
+                  "awslogs-group":
+                    // eslint-disable-next-line
+                    "${aws_cloudwatch_log_group.service_sidecar_logs_F0723DAB.name}",
+                  "awslogs-region":
+                    // eslint-disable-next-line
+                    "${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
+                  "awslogs-stream-prefix":
+                    // eslint-disable-next-line
+                    "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-",
+                },
+              },
+              memory: 512,
+              port: 9090,
+              requires_compatibilities: ["FARGATE"],
+              retry_join:
+                // eslint-disable-next-line
+                "${data.terraform_remote_state.tfc_outputs.outputs.consul_server_ips}",
+              source: "hashicorp/consul-ecs/aws//modules/mesh-task",
+              tags: {
+                team: "dev",
+              },
+              tls: true,
+              version: "0.4.2",
+            },
+          },
+          provider: {
+            aws: [
+              {
+                region: "us-east-1",
+              },
+            ],
+          },
+          resource: {
+            aws_cloudwatch_log_group: {
+              service_logs_30DB8EF6: {
+                "//": {
+                  metadata: {
+                    path: "cdktf-ecs-consul/service_logs/service_logs",
+                    uniqueId: "service_logs_30DB8EF6",
+                  },
+                },
+
+                name_prefix:
+                  // eslint-disable-next-line
+                  "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-",
+              },
+              service_sidecar_logs_F0723DAB: {
+                "//": {
+                  metadata: {
+                    path: "cdktf-ecs-consul/service_sidecar_logs/service_sidecar_logs",
+                    uniqueId: "service_sidecar_logs_F0723DAB",
+                  },
+                },
+                name_prefix:
+                  // eslint-disable-next-line
+                  "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-",
+              },
+            },
+            aws_ecs_service: {
+              images_serivce_71209E8F: {
+                "//": {
+                  metadata: {
+                    path: "cdktf-ecs-consul/images_serivce/images_serivce",
+                    uniqueId: "images_serivce_71209E8F",
+                  },
+                },
+                cluster:
+                  // eslint-disable-next-line
+                  "${data.terraform_remote_state.tfc_outputs.outputs.cluster_arn}",
+                desired_count: 1,
+                launch_type: "FARGATE",
+                // eslint-disable-next-line
+                name: "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
+                network_configuration: {
+                  assign_public_ip: false,
+                  security_groups: [
+                    // eslint-disable-next-line
+                    "${data.terraform_remote_state.tfc_outputs.outputs.client_security_group_id}",
+                    // eslint-disable-next-line
+                    "${data.terraform_remote_state.tfc_outputs.outputs.upstream_security_group_id}",
+                  ],
+                  subnets:
+                    // eslint-disable-next-line
+                    "${data.terraform_remote_state.tfc_outputs.outputs.private_subnet_ids}",
+                },
+                propagate_tags: "TASK_DEFINITION",
+                // eslint-disable-next-line
+                task_definition: "${module.images_module.task_definition_arn}",
+              },
+            },
+          },
+          terraform: {
+            backend: {
+              local: {
+                path: "/Users/cole/Projects/cdktf-ecs-consul/terraform.cdktf-ecs-consul.tfstate",
+              },
+            },
+            required_providers: {
+              aws: {
+                source: "aws",
+                version: "4.32.0",
+              },
+            },
+          },
         },
         null,
         2

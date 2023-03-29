@@ -1,7 +1,7 @@
 {
   "name": "json-to-tf",
   "version": "0.2.0",
-  "description": "A lightweight package to convert JSON into Terraform blocks",
+  "description": "A lightweight package to convert JSON into Terraform blocks. Use CDKTF json to create terraform code.",
   "main": "index.js",
   "directories": {
     "lib": "lib"
