@@ -1,13 +1,14 @@
 const { assert } = require("chai");
+const { jsonToTf } = require("../lib/json-to-tf");
 const {
   stringifyTranspose,
   matchLength,
   stringifyValue,
   longestKeyLength,
-  jsonToTf,
-} = require("../lib/json-to-tf");
+  jsonToTfLegacy,
+} = require("../lib/json-to-tf-legacy");
 
-describe("jsonToTf", () => {
+describe("jsonToTfLegacy", () => {
   describe("stringifyTranspose", () => {
     it("should transpose list of strings with quotes", () => {
       let expectedData = {
@@ -95,19 +96,19 @@ describe("jsonToTf", () => {
       );
     });
   });
-  describe("jsonToTf", () => {
+  describe("jsonToTfLegacy", () => {
     it("should return a data source", () => {
-      let actualData = jsonToTf("test", "test", { name: "test" }, true);
+      let actualData = jsonToTfLegacy("test", "test", { name: "test" }, true);
       let expectedData = 'data "test" "test" {\n  name = test\n}\n';
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource", () => {
-      let actualData = jsonToTf("test", "test", { name: "test" });
+      let actualData = jsonToTfLegacy("test", "test", { name: "test" });
       let expectedData = 'resource "test" "test" {\n  name = test\n}\n';
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource with timeouts and depends on", () => {
-      let actualData = jsonToTf("test", "test", {
+      let actualData = jsonToTfLegacy("test", "test", {
         name: "test",
         timeouts: { create: "1m" },
         depends_on: ["ref1"],
@@ -117,7 +118,7 @@ describe("jsonToTf", () => {
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource with multiblock", () => {
-      let actualData = jsonToTf("test", "test", {
+      let actualData = jsonToTfLegacy("test", "test", {
         name: "test",
         "-zone": [
           {
@@ -135,7 +136,7 @@ describe("jsonToTf", () => {
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource with multiline array", () => {
-      let actualData = jsonToTf("test", "test", {
+      let actualData = jsonToTfLegacy("test", "test", {
         name: "test",
         "*zone": ["zone-zone", "zone-zone-zone-zone"],
       });
@@ -144,7 +145,7 @@ describe("jsonToTf", () => {
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource with a nest object with no assignment", () => {
-      let actualData = jsonToTf("test", "test", {
+      let actualData = jsonToTfLegacy("test", "test", {
         name: "test",
         _zone: {
           name: "^the-zone",
@@ -156,7 +157,7 @@ describe("jsonToTf", () => {
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource with a nest object with an assignment", () => {
-      let actualData = jsonToTf("test", "test", {
+      let actualData = jsonToTfLegacy("test", "test", {
         name: "test",
         "^zone": {
           name: "^the-zone",
@@ -168,7 +169,7 @@ describe("jsonToTf", () => {
       assert.deepEqual(actualData, expectedData, "it should return data");
     });
     it("should return a resource with a nest object with an assignment and a nested array", () => {
-      let actualData = jsonToTf("test", "test", {
+      let actualData = jsonToTfLegacy("test", "test", {
         name: "test",
         "^zone": {
           name: "^the-zone",
@@ -179,6 +180,385 @@ describe("jsonToTf", () => {
       let expectedData =
         'resource "test" "test" {\n  name  = test\n\n  zone = {\n    name     = "the-zone"\n    type     = "pizza"\n    toppings = [\n      "mushroom",\n      "feta"\n    ]\n  }\n}\n';
       assert.deepEqual(actualData, expectedData, "it should return data");
+    });
+  });
+  describe("jsonToTf", () => {
+    it("should return aws instance", () => {
+      let actualData = jsonToTf(`{
+        "resource": {
+          "aws_instance": {
+            "example": {
+              "instance_type": "t2.micro",
+              "ami": "ami-abc123"
+            }
+          }
+        }
+      }`);
+      let expectedData = `resource "aws_instance" "example" {
+  instance_type = "t2.micro"
+  ami           = "ami-abc123"
+}`;
+
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return aws instance with provisioners", () => {
+      let actualData = jsonToTf(`{
+  "resource": {
+    "aws_instance": {
+      "example": {
+        "provisioner": [
+          {
+            "local-exec": {
+              "command": "echo 'Hello World' >example.txt"
+            }
+          },
+          {
+            "file": {
+              "source": "example.txt",
+              "destination": "/tmp/example.txt"
+            }
+          },
+          {
+            "remote-exec": {
+              "inline": ["sudo install-something -f /tmp/example.txt"]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+`);
+      let expectedData = `resource "aws_instance" "example" {
+  provisioner "local-exec" {
+    command = "echo 'Hello World' >example.txt"
+  }
+  provisioner "file" {
+    source      = "example.txt"
+    destination = "/tmp/example.txt"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      "sudo install-something -f /tmp/example.txt"
+    ]
+  }
+}`;
+
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return aws log group", () => {
+      let actualData = jsonToTf(`{
+        "resource": {
+           "aws_cloudwatch_log_group": {
+             "service_logs_30DB8EF6": {
+               "//": {
+                 "metadata": {
+                   "path": "cdktf-ecs-consul/service_logs/service_logs",
+                   "uniqueId": "service_logs_30DB8EF6"
+                 }
+               },
+               "name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+             }
+        }
+      }`);
+      let expectedData = `resource "aws_cloudwatch_log_group" "service_logs_30DB8EF6" {
+  name_prefix = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+
+    it("should create three different resources", () => {
+      let exampleAwsResources = `{
+          "resource": {
+        "aws_cloudwatch_log_group": {
+          "service_logs_30DB8EF6": {
+            "//": {
+              "metadata": {
+                "path": "cdktf-ecs-consul/service_logs/service_logs",
+                "uniqueId": "service_logs_30DB8EF6"
+              }
+            },
+            "name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+          },
+          "service_sidecar_logs_F0723DAB": {
+            "//": {
+              "metadata": {
+                "path": "cdktf-ecs-consul/service_sidecar_logs/service_sidecar_logs",
+                "uniqueId": "service_sidecar_logs_F0723DAB"
+              }
+            },
+            "name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-"
+          }
+        },
+        "aws_ecs_service": {
+          "images_serivce_71209E8F": {
+            "//": {
+              "metadata": {
+                "path": "cdktf-ecs-consul/images_serivce/images_serivce",
+                "uniqueId": "images_serivce_71209E8F"
+              }
+            },
+            "cluster": "\${data.terraform_remote_state.tfc_outputs.outputs.cluster_arn}",
+            "desired_count": 1,
+            "launch_type": "FARGATE",
+            "name": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
+            "network_configuration": [{
+              "assign_public_ip": false,
+              "security_groups": [
+                "\${data.terraform_remote_state.tfc_outputs.outputs.client_security_group_id}",
+                "\${data.terraform_remote_state.tfc_outputs.outputs.upstream_security_group_id}"
+              ],
+              "subnets": "\${data.terraform_remote_state.tfc_outputs.outputs.private_subnet_ids}"
+            }],
+            "propagate_tags": "TASK_DEFINITION",
+            "task_definition": "\${module.images_module.task_definition_arn}"
+          }
+        }
+      }
+    }`;
+      let actualData = jsonToTf(exampleAwsResources);
+      let expectedData = `resource "aws_cloudwatch_log_group" "service_logs_30DB8EF6" {
+  name_prefix = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+}
+
+resource "aws_cloudwatch_log_group" "service_sidecar_logs_F0723DAB" {
+  name_prefix = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-"
+}
+
+resource "aws_ecs_service" "images_serivce_71209E8F" {
+  cluster         = data.terraform_remote_state.tfc_outputs.outputs.cluster_arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+  name            = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images"
+  propagate_tags  = "TASK_DEFINITION"
+  task_definition = module.images_module.task_definition_arn
+  network_configuration {
+    assign_public_ip = false
+    subnets          = data.terraform_remote_state.tfc_outputs.outputs.private_subnet_ids
+    security_groups = [
+      data.terraform_remote_state.tfc_outputs.outputs.client_security_group_id,
+      data.terraform_remote_state.tfc_outputs.outputs.upstream_security_group_id
+    ]
+  }
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return data source", () => {
+      let actualData = jsonToTf(`{ "data": {
+        "terraform_remote_state": {
+          "tfc_outputs": {
+            "backend": "remote",
+            "config": {
+              "organization": "jcolemorrison",
+              "workspaces": {
+                "name": "terraform-ecs-consul"
+              }
+            }
+          }
+        }
+      }
+    }`);
+      let expectedData = `data "terraform_remote_state" "tfc_outputs" {
+  backend = "remote"
+  config = {
+    organization = "jcolemorrison"
+    workspaces = {
+      name = "terraform-ecs-consul"
+    }
+  }
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return module", () => {
+      let actualData = jsonToTf(`{
+"module": {
+      "images_module": {
+        "//": {
+          "metadata": {
+            "path": "cdktf-ecs-consul/images_module",
+            "uniqueId": "images_module"
+          }
+        },
+        "acl_secret_name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}",
+        "acls": true,
+        "consul_client_token_secret_arn": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_client_token_secret_arn}",
+        "consul_datacenter": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_dc_name}",
+        "consul_server_ca_cert_arn": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_root_ca_cert_arn}",
+        "container_definitions": [
+          {
+            "cpu": 0,
+            "environment": [
+              {
+                "name": "NAME",
+                "value": "Images"
+              },
+              {
+                "name": "MESSAGE",
+                "value": "Hello from the CDKTF Image Service"
+              },
+              {
+                "name": "UPSTREAM_URIS",
+                "value": "http://\${data.terraform_remote_state.tfc_outputs.outputs.database_private_ip}:27017"
+              }
+            ],
+            "essential": true,
+            "image": "nicholasjackson/fake-service:v0.23.1",
+            "logConfiguration": {
+              "logDriver": "awslogs",
+              "options": {
+                "awslogs-group": "\${aws_cloudwatch_log_group.service_logs_30DB8EF6.name}",
+                "awslogs-region": "\${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
+                "awslogs-stream-prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+              }
+            },
+            "name": "images",
+            "portMappings": [
+              {
+                "containerPort": 9090,
+                "hostPort": 9090,
+                "protocol": "tcp"
+              }
+            ]
+          }
+        ],
+        "cpu": 256,
+        "family": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
+        "gossip_key_secret_arn": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_gossip_key_arn}",
+        "log_configuration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "\${aws_cloudwatch_log_group.service_sidecar_logs_F0723DAB.name}",
+            "awslogs-region": "\${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
+            "awslogs-stream-prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-"
+          }
+        },
+        "memory": 512,
+        "port": 9090,
+        "requires_compatibilities": [
+          "FARGATE"
+        ],
+        "retry_join": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_server_ips}",
+        "source": "hashicorp/consul-ecs/aws//modules/mesh-task",
+        "tags": {
+          "team": "dev"
+        },
+        "tls": true,
+        "version": "0.4.2"
+      }
+    }
+  }`);
+      let expectedData = `module "images_module" {
+  source                         = "hashicorp/consul-ecs/aws//modules/mesh-task"
+  acl_secret_name_prefix         = data.terraform_remote_state.tfc_outputs.outputs.project_tag
+  acls                           = true
+  consul_client_token_secret_arn = data.terraform_remote_state.tfc_outputs.outputs.consul_client_token_secret_arn
+  consul_datacenter              = data.terraform_remote_state.tfc_outputs.outputs.consul_dc_name
+  consul_server_ca_cert_arn      = data.terraform_remote_state.tfc_outputs.outputs.consul_root_ca_cert_arn
+  cpu                            = 256
+  family                         = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images"
+  gossip_key_secret_arn          = data.terraform_remote_state.tfc_outputs.outputs.consul_gossip_key_arn
+  memory                         = 512
+  port                           = 9090
+  retry_join                     = data.terraform_remote_state.tfc_outputs.outputs.consul_server_ips
+  tls                            = true
+  version                        = "0.4.2"
+  container_definitions = [
+    {
+      cpu              = 0
+      environment      = [
+        {
+          name  = "NAME"
+          value = "Images"
+        }
+        {
+          name  = "MESSAGE"
+          value = "Hello from the CDKTF Image Service"
+        }
+        {
+          name  = "UPSTREAM_URIS"
+          value = "http://\${data.terraform_remote_state.tfc_outputs.outputs.database_private_ip}:27017"
+        }
+      ]
+      essential        = true
+      image            = "nicholasjackson/fake-service:v0.23.1"
+      logConfiguration = {
+        logDriver = "awslogs"
+        options   = {
+          awslogs-group         = "\${aws_cloudwatch_log_group.service_logs_30DB8EF6.name}"
+          awslogs-region        = "\${data.terraform_remote_state.tfc_outputs.outputs.project_region}"
+          awslogs-stream-prefix = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+        }
+      }
+      name             = "images"
+      portMappings     = [
+        {
+          containerPort = 9090
+          hostPort      = 9090
+          protocol      = "tcp"
+        }
+      ]
+    }
+  ]
+  log_configuration = {
+    logDriver = "awslogs"
+    options = {
+      awslogs-group         = aws_cloudwatch_log_group.service_sidecar_logs_F0723DAB.name
+      awslogs-region        = data.terraform_remote_state.tfc_outputs.outputs.project_region
+      awslogs-stream-prefix = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-"
+    }
+  }
+  requires_compatibilities = [
+    "FARGATE"
+  ]
+  tags = {
+    team = "dev"
+  }
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return provider block", () => {
+      let actualData = jsonToTf(`{
+        "provider": {
+          "aws": [
+            {
+              "region": "us-east-1"
+            }
+          ]
+        }
+  }`);
+      let expectedData = `provider "aws" {
+  region = "us-east-1"
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return terraform block", () => {
+      let actualData = jsonToTf(`{
+        "terraform": {
+          "backend": {
+            "local": {
+              "path": "/Users/cole/Projects/cdktf-ecs-consul/terraform.cdktf-ecs-consul.tfstate"
+            }
+          },
+          "required_providers": {
+            "aws": {
+              "source": "aws",
+              "version": "4.32.0"
+            }
+          }
+        }
+  }`);
+      let expectedData = `terraform {
+  backend "local" {
+    path = "/Users/cole/Projects/cdktf-ecs-consul/terraform.cdktf-ecs-consul.tfstate"
+  }
+  required_providers {
+    aws = {
+      source  = "aws"
+      version = "4.32.0"
+    }
+  }
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
     });
   });
 });
