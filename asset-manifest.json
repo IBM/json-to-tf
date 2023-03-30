@@ -1,7 +1,7 @@
 {
   "files": {
-    "main.css": "/json-to-tf/static/css/main.8a2cb7f3.css",
-    "main.js": "/json-to-tf/static/js/main.7c4fca13.js",
+    "main.css": "/json-to-tf/static/css/main.71f2884b.css",
+    "main.js": "/json-to-tf/static/js/main.4cc0a7b4.js",
     "static/js/787.16ed8547.chunk.js": "/json-to-tf/static/js/787.16ed8547.chunk.js",
     "static/media/IBMPlexSerif-SemiBoldItalic-Cyrillic.woff": "/json-to-tf/static/media/IBMPlexSerif-SemiBoldItalic-Cyrillic.d96e5a614e96c351c453.woff",
     "static/media/IBMPlexSerif-SemiBoldItalic-Latin1.woff": "/json-to-tf/static/media/IBMPlexSerif-SemiBoldItalic-Latin1.b691d8c0c5110ea3659e.woff",
@@ -184,12 +184,12 @@
     "static/media/IBMPlexMono-Light-Latin3.woff2": "/json-to-tf/static/media/IBMPlexMono-Light-Latin3.8a014da16bb5df1e9830.woff2",
     "static/media/IBMPlexMono-Regular-Latin3.woff2": "/json-to-tf/static/media/IBMPlexMono-Regular-Latin3.cacfd1d7dbd14067b970.woff2",
     "index.html": "/json-to-tf/index.html",
-    "main.8a2cb7f3.css.map": "/json-to-tf/static/css/main.8a2cb7f3.css.map",
-    "main.7c4fca13.js.map": "/json-to-tf/static/js/main.7c4fca13.js.map",
+    "main.71f2884b.css.map": "/json-to-tf/static/css/main.71f2884b.css.map",
+    "main.4cc0a7b4.js.map": "/json-to-tf/static/js/main.4cc0a7b4.js.map",
     "787.16ed8547.chunk.js.map": "/json-to-tf/static/js/787.16ed8547.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.8a2cb7f3.css",
-    "static/js/main.7c4fca13.js"
+    "static/css/main.71f2884b.css",
+    "static/js/main.4cc0a7b4.js"
   ]
 }
