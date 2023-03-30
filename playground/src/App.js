@@ -5,16 +5,9 @@ import CodeMirror from "@uiw/react-codemirror";
 import { createTheme } from "@uiw/codemirror-themes";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags as t } from "@lezer/highlight";
-import { IcseFormGroup } from "icse-react-assets";
-import {
-  Toggle,
-  TextInput,
-  Tabs,
-  TabList,
-  Tab,
-  TabPanels,
-  TabPanel,
-} from "@carbon/react";
+import { Tabs, TabList, Tab, TabPanels, TabPanel } from "@carbon/react";
+import { Buffer } from "buffer";
+window.Buffer = Buffer;
 const flute = require("little-flute");
 const {
   eachKey,
@@ -184,7 +177,10 @@ function tfData(data, offset, isModule) {
       );
       let formatedArrHcl = "\n";
       arrHcl.forEach((line) => {
-        formatedArrHcl += line + "\n";
+        formatedArrHcl +=
+          (line.match(/[^\$]+"\$\{[^"}]+}"/g) === null
+            ? line
+            : line.replace(/("\${)|(\}")/g, "")) + "\n";
       });
       str += formatedArrHcl.replace(/\n$/, "");
     } else if (isArrayOfObjects(data[key])) {
@@ -220,7 +216,7 @@ function tfData(data, offset, isModule) {
  */
 function formatTfBlock(style, name, data) {
   let tf = "";
-  if (contains(["terraform", "provider", "module"], style)) {
+  if (contains(["terraform", "provider", "module", "variable"], style)) {
     tf += `${style}${style === "terraform" ? "" : ` "${name}"`} {`;
     tf += tfData(data, 0, true);
     tf += `\n}`;
@@ -255,30 +251,46 @@ function jsonToTf(jsonStr) {
       });
     });
   }
-  ["resource", "data"].forEach((key) => {
-    if (data[key]) getResourceTf(data[key], key === "data");
-  });
 
-  if (data.module) {
-    eachKey(data.module, (tfModule) => {
-      tf += formatTfBlock(
-        "module",
-        data.module[tfModule]["//"].metadata.uniqueId,
-        data.module[tfModule]
-      );
+  if (data.terraform) {
+    tf += formatTfBlock("terraform", false, data.terraform) + "\n\n";
+  }
+
+  if (data.variable) {
+    eachKey(data.variable, (variable) => {
+      tf +=
+        formatTfBlock("variable", variable, data.variable[variable]) + "\n\n";
     });
   }
 
   if (data.provider) {
     eachKey(data.provider, (provider) => {
       data.provider[provider].forEach((instance) => {
-        tf += formatTfBlock("provider", provider, instance);
+        tf += formatTfBlock("provider", provider, instance) + "\n\n";
       });
     });
   }
 
-  if (data.terraform) {
-    tf += formatTfBlock("terraform", false, data.terraform);
+  if (data.module) {
+    eachKey(data.module, (tfModule) => {
+      tf +=
+        formatTfBlock(
+          "module",
+          data.module[tfModule]["//"].metadata.uniqueId,
+          data.module[tfModule]
+        ) + "\n\n";
+    });
+  }
+
+  ["resource", "data"].forEach((key) => {
+    if (data[key]) getResourceTf(data[key], key === "data");
+  });
+
+  if (data.output) {
+    eachKey(data.output, (output) => {
+      tf +=
+        formatTfBlock("output", output, data.output[output]) + "\n\n";
+    });
   }
 
   return tf.replace(/\n\n*$/g, "");
@@ -306,213 +318,181 @@ class App extends React.Component {
       type: "ibm_container_vpc_cluster",
       name: "test",
       use_data: false,
-      code: JSON.stringify(
+      code: `{
+  "//": {
+    "metadata": {
+      "backend": "local",
+      "stackName": "cdktf-ecs-consul",
+      "version": "0.12.2"
+    },
+    "outputs": {
+    }
+  },
+  "data": {
+    "terraform_remote_state": {
+      "tfc_outputs": {
+        "backend": "remote",
+        "config": {
+          "organization": "jcolemorrison",
+          "workspaces": {
+            "name": "terraform-ecs-consul"
+          }
+        }
+      }
+    }
+  },
+  "variable": {
+    "example": {
+      "default": "hello"
+    }
+  },
+  "output": {
+    "example": {
+      "value": "\${aws_instance.example}"
+    }
+  },
+  "module": {
+    "images_module": {
+      "//": {
+        "metadata": {
+          "path": "cdktf-ecs-consul/images_module",
+          "uniqueId": "images_module"
+        }
+      },
+      "acl_secret_name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}",
+      "acls": true,
+      "consul_client_token_secret_arn": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_client_token_secret_arn}",
+      "consul_datacenter": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_dc_name}",
+      "consul_server_ca_cert_arn": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_root_ca_cert_arn}",
+      "container_definitions": [
         {
-          "//": {
-            metadata: {
-              backend: "local",
-              stackName: "cdktf-ecs-consul",
-              version: "0.12.2",
+          "cpu": 0,
+          "environment": [
+            {
+              "name": "NAME",
+              "value": "Images"
             },
-            outputs: {},
+            {
+              "name": "MESSAGE",
+              "value": "Hello from the CDKTF Image Service"
+            },
+            {
+              "name": "UPSTREAM_URIS",
+              "value": "http://\${data.terraform_remote_state.tfc_outputs.outputs.database_private_ip}:27017"
+            }
+          ],
+          "essential": true,
+          "image": "nicholasjackson/fake-service:v0.23.1",
+          "logConfiguration": {
+            "logDriver": "awslogs",
+            "options": {
+              "awslogs-group": "\${aws_cloudwatch_log_group.service_logs_30DB8EF6.name}",
+              "awslogs-region": "\${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
+              "awslogs-stream-prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+            }
           },
-          data: {
-            terraform_remote_state: {
-              tfc_outputs: {
-                backend: "remote",
-                config: {
-                  organization: "jcolemorrison",
-                  workspaces: {
-                    name: "terraform-ecs-consul",
-                  },
-                },
-              },
-            },
-          },
-          module: {
-            images_module: {
-              "//": {
-                metadata: {
-                  path: "cdktf-ecs-consul/images_module",
-                  uniqueId: "images_module",
-                },
-              },
-              acl_secret_name_prefix:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}",
-              acls: true,
-              consul_client_token_secret_arn:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.consul_client_token_secret_arn}",
-              consul_datacenter:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.consul_dc_name}",
-              consul_server_ca_cert_arn:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.consul_root_ca_cert_arn}",
-              container_definitions: [
-                {
-                  cpu: 0,
-                  environment: [
-                    {
-                      name: "NAME",
-                      value: "Images",
-                    },
-                    {
-                      name: "MESSAGE",
-                      value: "Hello from the CDKTF Image Service",
-                    },
-                    {
-                      name: "UPSTREAM_URIS",
-                      value:
-                        // eslint-disable-next-line
-                        "http://${data.terraform_remote_state.tfc_outputs.outputs.database_private_ip}:27017",
-                    },
-                  ],
-                  essential: true,
-                  image: "nicholasjackson/fake-service:v0.23.1",
-                  logConfiguration: {
-                    logDriver: "awslogs",
-                    options: {
-                      "awslogs-group":
-                        // eslint-disable-next-line
-                        "${aws_cloudwatch_log_group.service_logs_30DB8EF6.name}",
-                      "awslogs-region":
-                        // eslint-disable-next-line
-                        "${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
-                      "awslogs-stream-prefix":
-                        // eslint-disable-next-line
-                        "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-",
-                    },
-                  },
-                  name: "images",
-                  portMappings: [
-                    {
-                      containerPort: 9090,
-                      hostPort: 9090,
-                      protocol: "tcp",
-                    },
-                  ],
-                },
-              ],
-              cpu: 256,
-              family:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
-              gossip_key_secret_arn:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.consul_gossip_key_arn}",
-              log_configuration: {
-                logDriver: "awslogs",
-                options: {
-                  "awslogs-group":
-                    // eslint-disable-next-line
-                    "${aws_cloudwatch_log_group.service_sidecar_logs_F0723DAB.name}",
-                  "awslogs-region":
-                    // eslint-disable-next-line
-                    "${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
-                  "awslogs-stream-prefix":
-                    // eslint-disable-next-line
-                    "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-",
-                },
-              },
-              memory: 512,
-              port: 9090,
-              requires_compatibilities: ["FARGATE"],
-              retry_join:
-                // eslint-disable-next-line
-                "${data.terraform_remote_state.tfc_outputs.outputs.consul_server_ips}",
-              source: "hashicorp/consul-ecs/aws//modules/mesh-task",
-              tags: {
-                team: "dev",
-              },
-              tls: true,
-              version: "0.4.2",
-            },
-          },
-          provider: {
-            aws: [
-              {
-                region: "us-east-1",
-              },
-            ],
-          },
-          resource: {
-            aws_cloudwatch_log_group: {
-              service_logs_30DB8EF6: {
-                "//": {
-                  metadata: {
-                    path: "cdktf-ecs-consul/service_logs/service_logs",
-                    uniqueId: "service_logs_30DB8EF6",
-                  },
-                },
-
-                name_prefix:
-                  // eslint-disable-next-line
-                  "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-",
-              },
-              service_sidecar_logs_F0723DAB: {
-                "//": {
-                  metadata: {
-                    path: "cdktf-ecs-consul/service_sidecar_logs/service_sidecar_logs",
-                    uniqueId: "service_sidecar_logs_F0723DAB",
-                  },
-                },
-                name_prefix:
-                  // eslint-disable-next-line
-                  "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-",
-              },
-            },
-            aws_ecs_service: {
-              images_serivce_71209E8F: {
-                "//": {
-                  metadata: {
-                    path: "cdktf-ecs-consul/images_serivce/images_serivce",
-                    uniqueId: "images_serivce_71209E8F",
-                  },
-                },
-                cluster:
-                  // eslint-disable-next-line
-                  "${data.terraform_remote_state.tfc_outputs.outputs.cluster_arn}",
-                desired_count: 1,
-                launch_type: "FARGATE",
-                // eslint-disable-next-line
-                name: "${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
-                network_configuration: {
-                  assign_public_ip: false,
-                  security_groups: [
-                    // eslint-disable-next-line
-                    "${data.terraform_remote_state.tfc_outputs.outputs.client_security_group_id}",
-                    // eslint-disable-next-line
-                    "${data.terraform_remote_state.tfc_outputs.outputs.upstream_security_group_id}",
-                  ],
-                  subnets:
-                    // eslint-disable-next-line
-                    "${data.terraform_remote_state.tfc_outputs.outputs.private_subnet_ids}",
-                },
-                propagate_tags: "TASK_DEFINITION",
-                // eslint-disable-next-line
-                task_definition: "${module.images_module.task_definition_arn}",
-              },
-            },
-          },
-          terraform: {
-            backend: {
-              local: {
-                path: "/Users/cole/Projects/cdktf-ecs-consul/terraform.cdktf-ecs-consul.tfstate",
-              },
-            },
-            required_providers: {
-              aws: {
-                source: "aws",
-                version: "4.32.0",
-              },
-            },
-          },
+          "name": "images",
+          "portMappings": [
+            {
+              "containerPort": 9090,
+              "hostPort": 9090,
+              "protocol": "tcp"
+            }
+          ]
+        }
+      ],
+      "cpu": 256,
+      "family": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
+      "gossip_key_secret_arn": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_gossip_key_arn}",
+      "log_configuration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "\${aws_cloudwatch_log_group.service_sidecar_logs_F0723DAB.name}",
+          "awslogs-region": "\${data.terraform_remote_state.tfc_outputs.outputs.project_region}",
+          "awslogs-stream-prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-"
+        }
+      },
+      "memory": 512,
+      "port": 9090,
+      "requires_compatibilities": [
+        "FARGATE"
+      ],
+      "retry_join": "\${data.terraform_remote_state.tfc_outputs.outputs.consul_server_ips}",
+      "source": "hashicorp/consul-ecs/aws//modules/mesh-task",
+      "tags": {
+        "team": "dev"
+      },
+      "tls": true,
+      "version": "0.4.2"
+    }
+  },
+  "provider": {
+    "aws": [
+      {
+        "region": "us-east-1"
+      }
+    ]
+  },
+  "resource": {
+    "aws_cloudwatch_log_group": {
+      "service_logs_30DB8EF6": {
+        "//": {
+          "metadata": {
+            "path": "cdktf-ecs-consul/service_logs/service_logs",
+            "uniqueId": "service_logs_30DB8EF6"
+          }
         },
-        null,
-        2
-      ),
+        "name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
+      },
+      "service_sidecar_logs_F0723DAB": {
+        "//": {
+          "metadata": {
+            "path": "cdktf-ecs-consul/service_sidecar_logs/service_sidecar_logs",
+            "uniqueId": "service_sidecar_logs_F0723DAB"
+          }
+        },
+        "name_prefix": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-sidcars-"
+      }
+    },
+    "aws_ecs_service": {
+      "images_serivce_71209E8F": {
+        "//": {
+          "metadata": {
+            "path": "cdktf-ecs-consul/images_serivce/images_serivce",
+            "uniqueId": "images_serivce_71209E8F"
+          }
+        },
+        "cluster": "\${data.terraform_remote_state.tfc_outputs.outputs.cluster_arn}",
+        "desired_count": 1,
+        "launch_type": "FARGATE",
+        "name": "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images",
+        "network_configuration": {
+          "assign_public_ip": false,
+          "security_groups": [
+            "\${data.terraform_remote_state.tfc_outputs.outputs.client_security_group_id}",
+            "\${data.terraform_remote_state.tfc_outputs.outputs.upstream_security_group_id}"
+          ],
+          "subnets": "\${data.terraform_remote_state.tfc_outputs.outputs.private_subnet_ids}"
+        },
+        "propagate_tags": "TASK_DEFINITION",
+        "task_definition": "\${module.images_module.task_definition_arn}"
+      }
+    }
+  },
+  "terraform": {
+    "backend": {
+      "local": {
+        "path": "/Users/cole/Projects/cdktf-ecs-consul/terraform.cdktf-ecs-consul.tfstate"
+      }
+    },
+    "required_providers": {
+      "aws": {
+        "source": "aws",
+        "version": "4.32.0"
+      }
+    }
+  }
+      }`,
     };
     this.onChange = this.onChange.bind(this);
     this.renderedCode = this.renderedCode.bind(this);
@@ -530,30 +510,12 @@ class App extends React.Component {
   }
 
   renderedJson() {
-    try {
-      JSON.parse(this.state.code);
-      let str = "";
-      this.state.code.split(/\n/g).forEach((item) => {
-        str += `  ${item}\n`;
-      });
-      return str
-        .replace(/}(?=\s*$)/g, "},")
-        .replace(/"(?=\w+":)/g, "")
-        .replace(/"(?=:\s\[\n|")/g, "")
-        .replace(/"(?=:(?!\s\[))/g, "");
-    } catch (err) {
-      return err.message;
-    }
+    return this.state.code;
   }
 
   renderedCode() {
     try {
-      return jsonToTf(
-        this.state.type,
-        this.state.name,
-        JSON.parse(this.state.code),
-        this.state.use_data
-      );
+      return jsonToTf(this.state.code);
     } catch (err) {
       return err.message;
     }
@@ -573,7 +535,6 @@ class App extends React.Component {
         <Tabs>
           <TabList aria-label="formTabs">
             <Tab>Playground</Tab>
-            <Tab>Docs</Tab>
           </TabList>
           <TabPanels>
             <TabPanel>
@@ -583,68 +544,12 @@ class App extends React.Component {
                   className="leftText"
                   style={{ marginRight: "1vw" }}
                 >
-                  <IcseFormGroup className="pad" noMarginBottom>
-                    <TextInput
-                      id="type"
-                      name="type"
-                      labelText="Terraform Resource Type"
-                      value={this.state.type}
-                      className="fill"
-                      onChange={this.handleInputChange}
-                    />
-                  </IcseFormGroup>
-                  <IcseFormGroup className="pad" noMarginBottom>
-                    <TextInput
-                      id="name"
-                      name="name"
-                      labelText="Terraform Resource Name"
-                      value={this.state.name}
-                      className="fill"
-                      onChange={this.handleInputChange}
-                    />
-                  </IcseFormGroup>
-                  <IcseFormGroup className="pad">
-                    <Toggle
-                      id="use_data"
-                      name="use_data"
-                      labelText="Data Resource"
-                      value={this.state.use_data}
-                      onToggle={() =>
-                        this.setState({ use_data: !this.state.use_data })
-                      }
-                    />
-                  </IcseFormGroup>
                   <div>
                     <Code code={this.state.code} onChange={this.onChange} />
                   </div>
                 </div>
                 <div id="render" className="leftText">
-                  <Tabs>
-                    <TabList aria-label="formTabs">
-                      <Tab>Terraform</Tab>
-                      <Tab>JavaScript</Tab>
-                    </TabList>
-                    <TabPanels className="leftText">
-                      <TabPanel className="doc">
-                        {<Code code={this.renderedCode()} readOnly />}
-                      </TabPanel>
-                      <TabPanel className="doc">
-                        {
-                          <Code
-                            code={
-                              `const jsonToTf = require("package-name")\n\n` +
-                              `jsonToTf(\n` +
-                              `  "${this.state.type}",\n` +
-                              `  "${this.state.name}",\n` +
-                              this.renderedJson() +
-                              `  ${this.state.use_data}\n);`
-                            }
-                            readOnly
-                          />
-                        }
-                      </TabPanel>
-                    </TabPanels>
-                  </Tabs>
+                  {<Code code={this.renderedCode()} readOnly />}
                 </div>
               </div>
             </TabPanel>

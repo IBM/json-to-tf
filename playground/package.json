@@ -8,14 +8,15 @@
     "@lezer/highlight": "^1.1.3",
     "@uiw/codemirror-themes": "^4.19.9",
     "@uiw/react-codemirror": "^4.19.9",
+    "buffer": "^6.0.3",
     "cra-template": "1.2.0",
     "gh-pages": "^5.0.0",
-    "icse-react-assets": "^0.3.11",
     "lazy-z": "^1.9.0",
     "little-flute": "^0.1.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
+    "stream-browserify": "^3.0.0",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

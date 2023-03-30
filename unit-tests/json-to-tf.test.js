@@ -484,8 +484,8 @@ resource "aws_ecs_service" "images_serivce_71209E8F" {
       logConfiguration = {
         logDriver = "awslogs"
         options   = {
-          awslogs-group         = "\${aws_cloudwatch_log_group.service_logs_30DB8EF6.name}"
-          awslogs-region        = "\${data.terraform_remote_state.tfc_outputs.outputs.project_region}"
+          awslogs-group         = aws_cloudwatch_log_group.service_logs_30DB8EF6.name
+          awslogs-region        = data.terraform_remote_state.tfc_outputs.outputs.project_region
           awslogs-stream-prefix = "\${data.terraform_remote_state.tfc_outputs.outputs.project_tag}-images-"
         }
       }
@@ -528,6 +528,32 @@ resource "aws_ecs_service" "images_serivce_71209E8F" {
   }`);
       let expectedData = `provider "aws" {
   region = "us-east-1"
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return variable block", () => {
+      let actualData = jsonToTf(`{
+        "variable": {
+          "example": {
+            "default": "hello"
+          }
+        }
+  }`);
+      let expectedData = `variable "example" {
+  default = "hello"
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
+    it("should return output block", () => {
+      let actualData = jsonToTf(`{
+        "output": {
+          "example": {
+            "value": "\${aws_instance.example}"
+          }
+        }
+  }`);
+      let expectedData = `output "example" {
+  value = aws_instance.example
 }`;
       assert.deepEqual(actualData, expectedData, "it should return terraform");
     });
