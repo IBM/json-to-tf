@@ -586,5 +586,16 @@ resource "aws_ecs_service" "images_serivce_71209E8F" {
 }`;
       assert.deepEqual(actualData, expectedData, "it should return terraform");
     });
+    it("should return terraform block", () => {
+      let actualData = jsonToTf(`{
+    "locals" : {
+      "teleport_user_data": "frog"
+    }
+  }`);
+      let expectedData = `locals {
+  teleport_user_data = "frog"
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
   });
 });
