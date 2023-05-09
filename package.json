@@ -1,6 +1,6 @@
 {
   "name": "json-to-tf",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A lightweight package to convert JSON into Terraform blocks. Use CDKTF json to create terraform code.",
   "main": "index.js",
   "directories": {
@@ -35,5 +35,9 @@
     "json-to-terraform",
     "browser"
   ],
-  "homepage": "http://ibm.github.io/json-to-tf"
+  "homepage": "http://ibm.github.io/json-to-tf",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IBM/json-to-tf.git"
+  }
 }
