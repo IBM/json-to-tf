@@ -544,6 +544,29 @@ resource "aws_ecs_service" "images_serivce_71209E8F" {
 }`;
       assert.deepEqual(actualData, expectedData, "it should return terraform");
     });
+    it("should return variable block with validation", () => {
+      let actualData = jsonToTf(`{
+        "variable": {
+          "example": {
+            "default": "hello",
+            "validation" : [
+              {
+                "error_message": "uh oh",
+                "condition": true
+              }
+            ]
+          }
+        }
+  }`);
+      let expectedData = `variable "example" {
+  default = "hello"
+  validation {
+    error_message = "uh oh"
+    condition     = true
+  }
+}`;
+      assert.deepEqual(actualData, expectedData, "it should return terraform");
+    });
     it("should return output block", () => {
       let actualData = jsonToTf(`{
         "output": {
